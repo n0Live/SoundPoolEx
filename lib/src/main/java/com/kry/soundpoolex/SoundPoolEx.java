@@ -167,6 +167,7 @@ public class SoundPoolEx implements ISoundPool {
 
         if (streamID > 0) {
             SoundBundle bundle = new SoundBundle(streamID, soundID, mSoundIds.get(soundID));
+            mStreamIds.put(streamID, bundle);
             bundle.play(loop, rate);
         }
         return streamID;
