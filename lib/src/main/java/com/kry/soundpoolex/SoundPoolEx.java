@@ -234,6 +234,7 @@ public class SoundPoolEx implements ISoundPool {
             SoundBundle bundle = mStreamIds.get(streamID);
             if (bundle != null) {
                 bundle.stop();
+                mStreamIds.remove(streamID);
             } else {
                 Log.d(TAG, "SoundBundle for stream ID:" + String.valueOf(streamID) + " don't " +
                         "exists");
@@ -356,8 +357,28 @@ public class SoundPoolEx implements ISoundPool {
      * @return true if currently playing, false otherwise
      */
     public boolean isPlaying(int streamID) {
-        if (streamID <= 0 || !mSoundIds.containsKey(streamID)) return false;
+        if (streamID <= 0 || !mStreamIds.containsKey(streamID)) return false;
         return mStreamIds.get(streamID).isPlaying();
+    }
+
+    /**
+     * Checks whether any stream of specified soundID is playing. May returns false positive result
+     * if playing stopped when the maximum number of active streams is exceeded.
+     *
+     * @return true if currently playing, false otherwise
+     */
+    public boolean isSoundPlaying(int soundID) {
+        if (soundID <= 0 || !mSoundIds.containsKey(soundID)) return false;
+
+        if (!mStreamIds.isEmpty()) {
+            for (SoundBundle bundle : mStreamIds.values()) {
+                if (bundle.getSoundID() == soundID) {
+                    if (bundle.isPlaying()) return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
