@@ -262,8 +262,8 @@ public class SoundPoolEx implements ISoundPool {
     public void setLoop(int streamID, int loop) {
         mDelegate.setLoop(streamID, loop);
 
-        //setLoop not working on JELLY_BEAN and higher
-        if (!(Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) && streamID > 0) {
+        //setLoop not working with nonzero parameter: "E/AudioTrack: setLoop invalid value"
+        if (loop == 0 && streamID > 0) {
             SoundBundle bundle = mStreamIds.get(streamID);
             if (bundle != null) {
                 bundle.setLoop(loop);
