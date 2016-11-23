@@ -5,16 +5,15 @@ import android.content.Context;
 import android.content.res.AssetFileDescriptor;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
-import android.media.MediaPlayer;
+import android.media.MediaMetadataRetriever;
 import android.media.SoundPool;
 import android.os.Build;
 import android.util.Log;
+import android.util.SparseArray;
+import android.util.SparseIntArray;
 
 import java.io.FileDescriptor;
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
 
 /**
  * The SoundPoolEx extender adds methods {@link #getDuration(int)} and {@link #isPlaying(int)} .
@@ -22,15 +21,14 @@ import java.util.Map;
 public class SoundPoolEx implements ISoundPool {
     private final static String TAG = "SoundPoolEx";
     private final SoundPool mDelegate;
-    private final MediaPlayer mMediaPlayer;
     /**
      * Sound IDs '<'SoundID, Duration'>'
      */
-    private final Map<Integer, Integer> mSoundIds;
+    private final SparseIntArray mSoundIds;
     /**
      * Stream IDs '<'StreamID, SoundBundle'>'
      */
-    private final Map<Integer, SoundBundle> mStreamIds;
+    private final SparseArray<SoundBundle> mStreamIds;
 
     /**
      * Constructor. Constructs a SoundPoolEx object with the following characteristics:
@@ -47,9 +45,8 @@ public class SoundPoolEx implements ISoundPool {
     @Deprecated
     public SoundPoolEx(int maxStreams, int streamType, int srcQuality) {
         mDelegate = new SoundPool(maxStreams, streamType, srcQuality);
-        mMediaPlayer = new MediaPlayer();
-        mSoundIds = new HashMap<>();
-        mStreamIds = new HashMap<>();
+        mSoundIds = new SparseIntArray();
+        mStreamIds = new SparseArray<>();
     }
 
     /**
@@ -57,15 +54,21 @@ public class SoundPoolEx implements ISoundPool {
      */
     private SoundPoolEx(SoundPool soundPool) {
         mDelegate = soundPool;
-        mMediaPlayer = new MediaPlayer();
-        mSoundIds = new HashMap<>();
-        mStreamIds = new HashMap<>();
+        mSoundIds = new SparseIntArray();
+        mStreamIds = new SparseArray<>();
     }
 
     @Override
     public int load(String path, int priority) {
         int duration = calcDuration(path);
         int soundID = mDelegate.load(path, priority);
+
+        if (BuildConfig.DEBUG) {
+            Log.v(TAG, "Sound loaded from the path " + path + " - OK");
+            Log.v(TAG, "Sound ID: " + String.valueOf(soundID) + " " +
+                    " | duration:" + String.valueOf(duration) + " ms");
+        }
+
         mSoundIds.put(soundID, duration);
         return soundID;
     }
@@ -79,27 +82,31 @@ public class SoundPoolEx implements ISoundPool {
      */
     private int calcDuration(String path) {
         int duration = 0;
+        MediaMetadataRetriever mmr = new MediaMetadataRetriever();
         try {
-            mMediaPlayer.setDataSource(path);
-            duration = _calcDuration();
-        } catch (IOException e) {
-            Log.d(TAG, "MediaPlayer.calcDuration() error:", e);
+            mmr.setDataSource(path);
+            String durationStr = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+            if (durationStr != null) duration = Integer.parseInt(durationStr);
+
+            if (BuildConfig.DEBUG) Log.v(TAG, "Get duration (path) - OK");
+
         } finally {
-            mMediaPlayer.reset();
+            mmr.release();
         }
         return duration;
-    }
-
-    private int _calcDuration() throws IOException {
-        mMediaPlayer.prepare(); //synchronized
-        int result = mMediaPlayer.getDuration();
-        return (result > 0) ? result : 0;
     }
 
     @Override
     public int load(Context context, int resId, int priority) {
         int duration = calcDuration(context, resId);
         int soundID = mDelegate.load(context, resId, priority);
+
+        if (BuildConfig.DEBUG) {
+            Log.v(TAG, "Sound loaded from the resource ID " + String.valueOf(resId) + " - OK");
+            Log.v(TAG, "Sound ID: " + String.valueOf(soundID) + " " +
+                    " | duration:" + String.valueOf(duration) + " ms");
+        }
+
         mSoundIds.put(soundID, duration);
         return soundID;
     }
@@ -109,6 +116,13 @@ public class SoundPoolEx implements ISoundPool {
     public int load(AssetFileDescriptor afd, int priority) {
         int duration = calcDuration(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
         final int soundID = mDelegate.load(afd, priority);
+
+        if (BuildConfig.DEBUG) {
+            Log.v(TAG, "Sound loaded from an asset file descriptor " + afd.toString() + " - OK");
+            Log.v(TAG, "Sound ID: " + String.valueOf(soundID) + " " +
+                    " | duration:" + String.valueOf(duration) + " ms");
+        }
+
         mSoundIds.put(soundID, duration);
         return soundID;
     }
@@ -126,13 +140,16 @@ public class SoundPoolEx implements ISoundPool {
      */
     private int calcDuration(FileDescriptor fd, long offset, long length) {
         int duration = 0;
+        MediaMetadataRetriever mmr = new MediaMetadataRetriever();
         try {
-            mMediaPlayer.setDataSource(fd, offset, length);
-            duration = _calcDuration();
-        } catch (IOException e) {
-            Log.d(TAG, "MediaPlayer.calcDuration() error:", e);
+            mmr.setDataSource(fd, offset, length);
+            String durationStr = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+            if (durationStr != null) duration = Integer.parseInt(durationStr);
+
+            if (BuildConfig.DEBUG) Log.v(TAG, "Get duration (FileDescriptor) - OK");
+
         } finally {
-            mMediaPlayer.reset();
+            mmr.release();
         }
         return duration;
     }
@@ -142,6 +159,13 @@ public class SoundPoolEx implements ISoundPool {
     public int load(FileDescriptor fd, long offset, long length, int priority) {
         int duration = calcDuration(fd, offset, length);
         int soundID = mDelegate.load(fd, offset, length, priority);
+
+        if (BuildConfig.DEBUG) {
+            Log.v(TAG, "Sound loaded from a FileDescriptor " + fd.toString() + " - OK");
+            Log.v(TAG, "Sound ID: " + String.valueOf(soundID) + " " +
+                    " | duration:" + String.valueOf(duration) + " ms");
+        }
+
         mSoundIds.put(soundID, duration);
         return soundID;
     }
@@ -149,12 +173,21 @@ public class SoundPoolEx implements ISoundPool {
     @Override
     public boolean unload(int soundID) {
         boolean result = mDelegate.unload(soundID);
-        mSoundIds.remove(soundID);
+        mSoundIds.delete(soundID);
 
-        Iterator<SoundBundle> it = mStreamIds.values().iterator();
-        while (it.hasNext()) {
-            SoundBundle bundle = it.next();
-            if (bundle.getSoundID() == soundID) it.remove();
+        if (BuildConfig.DEBUG) {
+            Log.v(TAG, "Sound ID: " + String.valueOf(soundID) + " - " +
+                    "successfully unload");
+        }
+
+        int i = 0;
+        while (i <= mStreamIds.size() - 1) {
+            SoundBundle bundle = mStreamIds.valueAt(i);
+            if (bundle.getSoundID() == soundID) {
+                mStreamIds.remove(mStreamIds.keyAt(i));
+            } else {
+                i++;
+            }
         }
 
         return result;
@@ -164,6 +197,11 @@ public class SoundPoolEx implements ISoundPool {
     public int play(int soundID, float leftVolume, float rightVolume, int priority, int loop,
             float rate) {
         int streamID = mDelegate.play(soundID, leftVolume, rightVolume, priority, loop, rate);
+
+        if (BuildConfig.DEBUG) {
+            Log.v(TAG, "Sound ID: " + String.valueOf(soundID) + " - " +
+                    "is played. Stream ID: " + String.valueOf(streamID));
+        }
 
         if (streamID > 0) {
             SoundBundle bundle = new SoundBundle(streamID, soundID, mSoundIds.get(soundID));
@@ -176,6 +214,11 @@ public class SoundPoolEx implements ISoundPool {
     @Override
     public void pause(int streamID) {
         mDelegate.pause(streamID);
+
+        if (BuildConfig.DEBUG) {
+            Log.v(TAG, "Stream ID: " + String.valueOf(streamID) + " - " +
+                    "is paused");
+        }
 
         if (streamID > 0) {
             SoundBundle bundle = mStreamIds.get(streamID);
@@ -191,6 +234,11 @@ public class SoundPoolEx implements ISoundPool {
     @Override
     public void resume(int streamID) {
         mDelegate.resume(streamID);
+
+        if (BuildConfig.DEBUG) {
+            Log.v(TAG, "Stream ID: " + String.valueOf(streamID) + " - " +
+                    "is resumed");
+        }
 
         if (streamID > 0) {
             SoundBundle bundle = mStreamIds.get(streamID);
@@ -208,10 +256,11 @@ public class SoundPoolEx implements ISoundPool {
     public void autoPause() {
         mDelegate.autoPause();
 
-        if (!mStreamIds.isEmpty()) {
-            for (SoundBundle bundle : mStreamIds.values()) {
-                bundle.pause();
-            }
+        if (BuildConfig.DEBUG) Log.v(TAG, "All streams is paused (auto pause)");
+
+        for (int i = 0; i < mStreamIds.size(); i++) {
+            SoundBundle bundle = mStreamIds.valueAt(i);
+            bundle.pause();
         }
     }
 
@@ -220,16 +269,22 @@ public class SoundPoolEx implements ISoundPool {
     public void autoResume() {
         mDelegate.autoResume();
 
-        if (!mStreamIds.isEmpty()) {
-            for (SoundBundle bundle : mStreamIds.values()) {
-                bundle.resume();
-            }
+        if (BuildConfig.DEBUG) Log.v(TAG, "All streams is resumed (auto resume)");
+
+        for (int i = 0; i < mStreamIds.size(); i++) {
+            SoundBundle bundle = mStreamIds.valueAt(i);
+            bundle.resume();
         }
     }
 
     @Override
     public void stop(int streamID) {
         mDelegate.stop(streamID);
+
+        if (BuildConfig.DEBUG) {
+            Log.v(TAG, "Stream ID: " + String.valueOf(streamID) + " - " +
+                    "is stopped");
+        }
 
         if (streamID > 0) {
             SoundBundle bundle = mStreamIds.get(streamID);
@@ -262,6 +317,11 @@ public class SoundPoolEx implements ISoundPool {
     public void setLoop(int streamID, int loop) {
         mDelegate.setLoop(streamID, loop);
 
+        if (BuildConfig.DEBUG) {
+            Log.v(TAG, "Stream ID: " + String.valueOf(streamID) + " - " +
+                    "set " + String.valueOf(loop) + " loops");
+        }
+
         //setLoop not working with nonzero parameter: "E/AudioTrack: setLoop invalid value"
         if (loop == 0 && streamID > 0) {
             SoundBundle bundle = mStreamIds.get(streamID);
@@ -277,6 +337,11 @@ public class SoundPoolEx implements ISoundPool {
     @Override
     public void setRate(int streamID, float rate) {
         mDelegate.setRate(streamID, rate);
+
+        if (BuildConfig.DEBUG) {
+            Log.v(TAG, "Stream ID: " + String.valueOf(streamID) + " - " +
+                    "set rate: " + String.valueOf(rate));
+        }
 
         if (streamID > 0) {
             SoundBundle bundle = mStreamIds.get(streamID);
@@ -298,7 +363,6 @@ public class SoundPoolEx implements ISoundPool {
     @Override
     public final void release() {
         mDelegate.release();
-        mMediaPlayer.release();
         mSoundIds.clear();
         mStreamIds.clear();
     }
@@ -317,15 +381,19 @@ public class SoundPoolEx implements ISoundPool {
         if (afd == null) return 0;
 
         int duration = 0;
+        MediaMetadataRetriever mmr = new MediaMetadataRetriever();
         try {
-            mMediaPlayer.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(),
-                    afd.getLength());
+            mmr.setDataSource(afd.getFileDescriptor());
             afd.close();
-            duration = _calcDuration();
+            String durationStr = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+            if (durationStr != null) duration = Integer.parseInt(durationStr);
+
+            if (BuildConfig.DEBUG) Log.v(TAG, "Get duration (resId) - OK");
+
         } catch (IOException e) {
-            Log.d(TAG, "MediaPlayer.calcDuration() error:", e);
+            e.printStackTrace();
         } finally {
-            mMediaPlayer.reset();
+            mmr.release();
         }
         return duration;
     }
@@ -336,7 +404,7 @@ public class SoundPoolEx implements ISoundPool {
      * @return the duration in milliseconds, if no duration is available, 0 is returned.
      */
     public int getDuration(int soundID) {
-        if (soundID <= 0 || !mSoundIds.containsKey(soundID)) return 0;
+        if (soundID <= 0) return 0;
         return mSoundIds.get(soundID);
     }
 
@@ -347,7 +415,7 @@ public class SoundPoolEx implements ISoundPool {
      * @return the duration in milliseconds, if no duration is available, 0 is returned.
      */
     public int getStreamDuration(int streamID) {
-        if (streamID <= 0 || !mStreamIds.containsKey(streamID)) return 0;
+        if (streamID <= 0 || mStreamIds.indexOfKey(streamID) < 0) return 0;
         return mStreamIds.get(streamID).getDuration();
     }
 
@@ -358,7 +426,7 @@ public class SoundPoolEx implements ISoundPool {
      * @return true if currently playing, false otherwise
      */
     public boolean isPlaying(int streamID) {
-        if (streamID <= 0 || !mStreamIds.containsKey(streamID)) return false;
+        if (streamID <= 0 || mStreamIds.indexOfKey(streamID) < 0) return false;
         return mStreamIds.get(streamID).isPlaying();
     }
 
@@ -369,13 +437,12 @@ public class SoundPoolEx implements ISoundPool {
      * @return true if currently playing, false otherwise
      */
     public boolean isSoundPlaying(int soundID) {
-        if (soundID <= 0 || !mSoundIds.containsKey(soundID)) return false;
+        if (soundID <= 0 || mSoundIds.get(soundID) == 0) return false;
 
-        if (!mStreamIds.isEmpty()) {
-            for (SoundBundle bundle : mStreamIds.values()) {
-                if (bundle.getSoundID() == soundID) {
-                    if (bundle.isPlaying()) return true;
-                }
+        for (int i = 0; i < mStreamIds.size(); i++) {
+            SoundBundle bundle = mStreamIds.valueAt(i);
+            if (bundle.getSoundID() == soundID) {
+                if (bundle.isPlaying()) return true;
             }
         }
 
